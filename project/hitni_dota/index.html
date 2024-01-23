@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Herald Replay Documentation</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+      <button class="navbar-button js-navbar-button"></button>
+    <div class="navbar js-navbar">
+        <nav id="navbar">
+        <header>Herald Replay Technical Documentation</header>
+        <ul>
+            <li><a class="nav-link" href="#Introduction">Introduction</a></li>
+            <li><a class="nav-link" href="#Importing_Python_Library">Importing Python Library</a></li>
+            <li><a class="nav-link" href="#Pre_Data_Mining">Pre Data Mining</a></li>
+            <li><a class="nav-link" href="#Data_Mining">Data Mining</a></li>
+            <li><a class="nav-link" href="#Data_Preprocessing_and_Processing">Data Preprocessing and Processing</a></li>
+            <li><a class="nav-link" href="#Finishing_Touches_and_Displaying_Data">Finishing Touches and Displaying Data</a></li>
+            <li><a class="nav-link" href="#Extra_Fun">Extra Fun</a></li>
+            <li><a class="nav-link" href="#Gratitude_From_the_Author"> Gratitude From the Author</a></li>
+        </ul>
+        </nav>
+    </div>
+    <div class="main-doc">
+        <main id="main-doc">
+        <section class="main-section" id="Introduction">
+            <header>Introduction</header>
+            <p>
+            This code is used to gather herald replay data from opendota API and
+            stratz API. The mined data will then be processed into dataframes with
+            several statistical addition based on the replay such as:
+            </p>
+            <ul>
+            <li>Highest kill in the match</li>
+            <li>Highest death in the match</li>
+            <li>Highest multikill and killstreak</li>
+            <li>Standard replay data (duration, match date)</li>
+            <li>Average rank</li>
+            <li>Etc and much more!!</li>
+            </ul>
+            <p>
+            Disclaimer: since this is a project solely done by one person, there is limitation and imperfection here and there. And I couldn't be
+            bothered to release it as a complete code since I code in jupyter
+            notebook since I am a psychopath. If you read this and are trying to
+            create your own or create the same content as I do then I just wanted
+            to say thank you for understanding the spaghetti code (with no comment
+            sorry) that I wrote while I was 23. Sincerely HitnI.
+            </p>
+        </section>
+        <section class="main-section" id="Importing_Python_Library">
+            <header>Importing Python Library</header>
+            <p>
+            This first cell will be used to initialize the whole notebook cell.
+            Importing library, defining constant variable, and defining function
+            will be done in the first cell. Note that there are same library that
+            I did not end up using, that is just life.
+            </p>
+            <code><pre>import winsound
+from urllib3.connection import HTTPConnection
+import socket
+import numpy as np
+from IPython.display import display
+from IPython.core.display import HTML
+import opendota
+import requests
+import pandas as pd
+import time
+import tqdm.notebook as tqdm
+import re
+import plotly.express as px
+import plotly.graph_objects as go
+import ast
+from tqdm.contrib.telegram import tqdm as tqdmt
+import time
+import datetime
+from plyer import notification
+class StopExecution(Exception):
+    def _render_traceback_(self):
+        pass
+
+    TOKEN = removed
+    CHAT_ID = removed
+
+
+    def send_message(TEXT):
+        message = "hello from your telegram bot"
+        send_url = (
+            f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={TEXT}"
+        )
+        print(requests.get(send_url).json())  # this sends the message
+
+    client = opendota.OpenDota()
+
+    def pretty_print(df):
+        pd.set_option("display.max_columns", None)
+        pd.set_option("display.max_rows", None)
+        pd.set_option("display.precision", 2)
+        display(HTML(df.to_html(float_format="{:,}".format).replace("\\n", "<br>"))) #breakline broken here because it is HTML smh
+        pd.reset_option("display.max_columns")
+        pd.reset_option("display.max_rows")</pre>
+            </code>
+            <p>
+                TLDR the purposes of the libraries and function:
+            </p>
+            <ul>
+                <li>pandas for dataframe</li>
+                <li>requests for requesting API</li>
+                <li>opendota for requesting opendota API (old library and Documentation unclear so will not be used)</li>
+                <li>tqdm for beautiful progress bar</li>
+                <li>plotly for charts</li>
+                <li>Sending chats using telegram bots using request too (CHAT_ID and TOKEN removed since I don't want you lads to use it to spam me)</li>
+            </ul>
+        </section>
+        <section class="main-section" id="Pre_Data_Mining">
+            <header>Pre Data Mining</header>
+            <p>Before executing the data mining, there are several things to be done. Of course understanding how the data is shaped and how these websites such as opendota and stratz are able to get data from dota replay file will be beneficial for the long run. Long story short the replay file that you download to watch replays actually store all the information of the match but it's not simple to learn. Perhaps to make the file smaller and easier to download they stored item data, hero names, or things with long names in number called ID. Since obviously we want to look at the data not just the ID we will need to replace the ID with the real names thus we get them from the constants section from the API (either opendota or stratz is fine). Getting the item name, hero name, lobby type name, game mode name, etc will help you understand oh this just means it is a ranked game or oh this hero is just antimage</p>
+            <code><pre>df = pd.DataFrame(
+    client.explorer(
+        f"select DISTINCT lobby_type, game_mode from public_matches LIMIT 100"
+    )
+)
+lobby_type = client.get_constants("lobby_type")
+game_mode = client.get_constants("game_mode")
+items = client.get_constants("items")
+# lobby_rep = {}
+# for i in lobby_type['lobby_type']:
+#     lobby_rep[int(i)] = lobby_type['lobby_type'][i]['name']
+# game_rep = {}
+# for i in game_mode['game_mode']:
+#     game_rep[int(i)] = game_mode['game_mode'][i]['name']
+
+item_rep = {}
+for i in items["items"]:
+    try:
+        item_rep[items["items"][i]["id"]] = items["items"][i]["dname"]
+    except:
+        pass
+item_rep[0] = "none"
+item_rep[None] = "none"
+item_rep[221] = "Lotus Orb Recipe"
+# df['game_mode'] = df['game_mode'].replace(game_rep)
+# df['lobby_type'] = df['lobby_type'].replace(lobby_rep)
+# df.sort_values(by='lobby_type')</pre></code>
+    </section>
+    <section class="main-section" id="Data_Mining">
+        <header>Data Mining</header>
+        <p>The long and tedious part since sadly I haven't found a good solution. This process will usually take around 6-7 hours. I divided data mining into three cells: </p>
+        <ol>
+            <h2><li>Get the main data</h2><p>we will use the opendota API since it uses SQL query to pull the data. Thanks to that we can filter the match so we only get an average mmr from 10-15 which is the ID for herald 1 to 5. Stratz does not allow searching games specifically but it have it's own strength. The only weakness for this method is that opendota and all the other API does not have access to accounts that does not allow exposure of public data.</p></li>
+            <code><pre>import datetime
+
+last_week = datetime.datetime.today() - datetime.timedelta(days=10)
+
+public_matches_H = client.explorer(
+    f'select * from public_matches where avg_rank_tier BETWEEN 9 AND 16 AND "lobby_type" = 7 AND start_time > {round(last_week.timestamp())} ORDER BY duration DESC LIMIT 8000'
+)
+public_matches_G = client.explorer(
+    f'select * from public_matches where start_time > {round(last_week.timestamp())} ORDER BY duration DESC LIMIT 1999'
+)
+# df = pd.DataFrame(public_matches_H)
+df = pd.concat(
+    [pd.DataFrame(public_matches_H), pd.DataFrame(public_matches_G)], ignore_index=True
+)
+df_edit = df[:]</pre></code>
+                <h2><li>Divide and Conquer</li></h2><p>The only weakness of opendota API is that there are not a lot of information of the match other than the general stuff. Which is boring to see every time and makes the quality of the herald replay reallllly random. So to complete that data we need more interesting data. In comes the excruciating part, the manual loop data mining. The strength of stratz API will cover this since stratz API stores and pulls its data using graphql. One of the strength of graphql is that we don't need to pull all the data in order to access only a part of it, we can just pull each part individually. Thus enabling MORE columns of information and when someone pulls some data it will not be so heavy. Just to give you a taste, the stuff I can pull using graphql query is all the player information, all the match information, all the pros information, all the meta, PREDICTION OF THE GAME, IS THE GAME COMEBACK OR NOT?, legit draw a kills and gold graph since it records kills by the minute, and so much more. No wonder big data is blowing up it is so damn powerful.</p></li>
+                <code><pre>
+# note the url is 'graphql' and not 'graphiql'
+url = "https://api.stratz.com/graphql"
+api_token = GET YOUR OWN
+# api_token = GET YOUR OWN
+
+headers = {"Authorization": f"Bearer {api_token}"}
+
+
+def add_match_data(df):
+start = time.time()
+df_add_match = pd.DataFrame(
+    columns=[
+        "actualRank",
+        "analysisOutcome",
+        "topLaneOutcome",
+        "regionId",
+        "radiantNetworthLeads",
+        "radiantExperienceLeads",
+        "predictedWinRates",
+        "predictedOutcomeWeight",
+        "direKills",
+        "radiantKills",
+        "midLaneOutcome",
+        "bracket",
+        "bottomLaneOutcome",
+        "winRates",
+        "players",
+    ]
+)
+count_error = 0
+for idx, match_id in tqdm.tqdm(
+    enumerate(df["match_id"]), total=len(df["match_id"]), desc="main iteration"
+):
+    while True:
+        try:
+            query = (
+                """
+    query MyQuery {
+        match(id: """
+                + str(match_id)
+                + """) {
+        actualRank
+        analysisOutcome
+        topLaneOutcome
+        regionId
+        radiantNetworthLeads
+        radiantExperienceLeads
+        predictedWinRates
+        predictedOutcomeWeight
+        direKills
+        radiantKills
+        midLaneOutcome
+        bracket
+        bottomLaneOutcome
+        winRates
+        players {
+            hero {
+            displayName
+            }
+            playerSlot
+            imp
+            item0Id
+            item1Id
+            item2Id
+            item3Id
+            item4Id
+            item5Id
+            kills
+            deaths
+            assists
+            behavior
+            experiencePerMinute
+            goldPerMinute
+            gold
+            goldSpent
+            heroDamage
+            intentionalFeeding
+            isRadiant
+            level
+            networth
+            lane
+            position
+            numLastHits
+            numDenies
+            playbackData {
+                streakEvents {
+                type
+                value
+                time
+                }
+            }
+        }
+        }
+    }
+    """
+            )
+            r = requests.post(url, json={"query": query}, headers=headers,timeout=300)
+            if r.headers['X-RateLimit-Remaining-Day'] != '0':
+                df_add_match.loc[idx] = r.json()[
+                    "data"
+                ]["match"].values()
+            else:
+                break
+        except requests.exceptions.ConnectionError or TimeoutError or requests.exceptions.ReadTimeout or requests.JSONDecodeError:
+            continue
+        except AttributeError:
+            df_add_match.loc[idx] = [None for i in range(15)]
+            count_error += 1
+            break
+        except KeyboardInterrupt:
+            raise StopExecution
+        except KeyError:
+            minute_to_00 = 60 - datetime.datetime.now().minute
+            for minute in tqdm.tqdm(
+                range(minute_to_00), total=minute_to_00, desc="Time wait"
+            ):
+                time.sleep(60)
+            continue
+        else:
+            break
+end = time.time()
+send_message(
+    f"Process completed, time: {datetime.timedelta(seconds=round(end-start))}"
+)
+print("error amount = ", count_error)
+return df_add_match</pre></code>
+                <h2><li>Combining the power</h2><p>Lastly after setting up for stratz data mining. We will iterate each herald replay ID and pull data from stratz to then append. THIS IS PAINFULLY LONG almost 7 hours of data mining, since they limit how much you can pull data by seconds, minutes, hours, and days. Well usually I pull 10k rows or 10 k herald replays and I sort the herald replays based on the descending duration so we can get the longest herald replay since well the craziest things happen at 1 hour 30 minute of herald gameplay. I will try my best to discuss the exception handling because it almost drive me crazy one day, basically a lot of things can mess up the iteration. If your internet dies EVEN for a little bit then it will display an error and stop the iteration AND YES if so then it already consumed how much you can pull for one day AND the dataframe will be discarded (well I can do something about this but if I can get half of the data only then it is not worth). If your key run out of data pulls then again the worst thing happens, if your internet is slow as hell then the request modules will sent an error, If the data you pull is null well the literal_eval will send you an error, and each error is again just a headache. Then after finishing the data mining STORE IT SO YOU DON'T SUFFER LOSING IT.</p></li>
+                <code><pre>df_edit = df[:]
+df_edit = df_edit.drop("match_seq_num", axis=1)
+df_edit["start_time"] = pd.to_datetime(df_edit["start_time"], unit="s").dt.date
+df_edit["duration_minutes"] = df_edit["duration"] // 60
+df_edit["duration"] = pd.to_datetime(df_edit["duration"], unit="s").dt.time
+
+# old data get opendota
+# data_match_get = ['radiant_score','dire_score','players']
+# df_edit = pd.concat([df_edit,get_match_data(data_match_get)],axis=1,join='inner')
+
+# new data get stratz
+df_edit = pd.concat([df_edit, add_match_data(df_edit)], axis=1, join="inner")
+
+# df_edit['dire_score'] = df_edit.apply(lambda row: requests.get(f"https://api.opendota.com/api/matches/{row['match_id']}").json()['dire_score'],axis=1)
+# df_edit['radiant_score'] = df_edit.apply(lambda row: requests.get(f"https://api.opendota.com/api/matches/{row['match_id']}").json()['radiant_score'],axis=1)
+
+# old Data get total kill
+# df_edit['total_kill'] = df_edit['radiant_score'] + df_edit['dire_score']
+# df_edit['kills_per_minute'] = df_edit['total_kill'] / df_edit['duration_minutes']
+df_edit.to_csv("df_edit_temp.csv", index=False)
+winsound.Beep(600, 300)
+notification.notify(
+    title="Preprocessing done",
+    message="",
+    # displaying time
+    timeout=2,)</pre></code>
+            </ol>
+        </section>
+        <section class="main-section" id="Data_Preprocessing_and_Processing">
+            <header>Data Preprocessing and Processing</header>
+            <ol>
+            <h2><li>Data Preprocessing</h2><p>This part could be the fun, the descend to madness, but always the bread and butter for data scientist/analyst (mostly analyst).Now after gathering all of the data we need to process it but before processing it we need to Preprocess it. Preprocessing basically prepares the data so it will be useable for analysis <a href="https://en.wikipedia.org/wiki/Data_Preprocessing">wiki</a>. Long story short data cleaning, normalization, conversion from json, etc. Since the data is perfectly clean the main problem is expanding the player data since it is still in JSON format, and the other MAIN problem is that I wanted to separate all the 10 individual player data so that it can be accessible in future use with ease. It took a long time to figure out and even had to ask in stackoverflow that leads me to some unconventional spaghetti code since yes it is unconventional. I am pretty sure no actually I am sure there are better ways to explode the JSON without iterating (Which take more time and process heavier) and I am pretty sure there are ways to organize the data so that it is easier to use. Any improvement on this part is highly needed but since I really don't mind the long and heavy processing since I only use it once a week I will not improve it further.</p></li>
+            <code><pre>df_edit = pd.read_csv('df_edit_temp.csv')
+df_edit.dropna(subset='players',inplace=True)
+all_player = ['player_'+str(i) for i in range(10)]
+def explode(series):
+        df_add_0 = pd.json_normalize(series)
+        df_add_0["KDA"] = (
+            df_add_0["kills"].astype(str)
+            + "/"
+            + df_add_0["deaths"].astype(str)
+            + "/"
+            + df_add_0["assists"].astype(str)
+        )
+        df_add_0[[f"item{i}Id" for i in range(6)]] = df_add_0[[f"item{i}Id" for i in range(6)]].replace(item_rep)
+        df_add_0['item'] = df_add_0['item0Id'].astype('str') + "\n" + df_add_0['item1Id'].astype('str') + "\n" + df_add_0['item2Id'].astype('str') + "\n" + df_add_0['item3Id'].astype('str') + "\n" + df_add_0['item4Id'].astype('str') + "\n"+df_add_0['item5Id'].astype('str')
+        df_add_0.drop(["imp", "playerSlot","playbackData"], axis=1, inplace=True)
+        df_add_0.drop([f"item{i}Id" for i in range(6)], axis=1, inplace=True)
+        df_add_0.rename(columns={'hero.displayName':'name','playbackData.streakEvents':'streak'},inplace=True)
+        df_add_0.columns = pd.MultiIndex.from_product([[series.name], df_add_0.columns])
+        return df_add_0
+def newest_function():
+    df_add = pd.DataFrame()
+    (
+        df_add["player_0"],
+        df_add["player_1"],
+        df_add["player_2"],
+        df_add["player_3"],
+        df_add["player_4"],
+        df_add["player_5"],
+        df_add["player_6"],
+        df_add["player_7"],
+        df_add["player_8"],
+        df_add["player_9"],
+    ) = zip(*list(df_edit["players"].map(ast.literal_eval).values))
+    final_df = pd.concat([explode(df_add['player_'+str(i)]) for i in range(10)],axis=1)
+    for no in range(10):
+        for index,i in (final_df.loc(axis='columns')['player_'+str(no),'streak']).items():
+            try:
+                final_df.loc[index,('player_'+str(no),'HKS')] = (max(i,key = lambda x: x['value'] if x['type']=='KILL_STREAK' else 0) if max(i,key = lambda x: x['value'] if x['type']=='KILL_STREAK' else 0)['type']=='KILL_STREAK' else 0)['value']
+            except:
+                final_df.loc[index,('player_'+str(no),'HKS')] = 0
+            try:
+                final_df.loc[index,('player_'+str(no),'HMK')] = (max(i,key = lambda x: x['value'] if x['type']=='MULTI_KILL' else 0) if max(i,key = lambda x: x['value'] if x['type']=='MULTI_KILL' else 0)['type']=='MULTI_KILL' else 0)['value']
+            except:
+                final_df.loc[index,('player_'+str(no),'HMK')] = 0
+    HKP = final_df.loc(axis='columns')[:,'kills'].idxmax(axis=1).map(lambda x: (list(x)[0],'name'))
+    HKI = final_df.loc(axis='columns')[:,'kills'].idxmax(axis=1).map(lambda x: (list(x)[0],'item'))
+    HDP = final_df.loc(axis='columns')[:,'deaths'].idxmax(axis=1).map(lambda x: (list(x)[0],'name')) 
+    HDI = final_df.loc(axis='columns')[:,'deaths'].idxmax(axis=1).map(lambda x: (list(x)[0],'item'))
+    HKSP = final_df.loc(axis='columns')[:,'HKS'].idxmax(axis=1).map(lambda x: (list(x)[0],'name')) 
+    HMKP = final_df.loc(axis='columns')[:,'HMK'].idxmax(axis=1).map(lambda x: (list(x)[0],'name')) 
+    
+    df_add = pd.DataFrame()
+    df_add['HD'] = final_df.loc(axis='columns')[:,'deaths'].max(axis=1)
+    df_add['HK'] = final_df.loc(axis='columns')[:,'kills'].max(axis=1)
+    df_add['HKS'] = final_df.loc(axis='columns')[:,'HKS'].max(axis=1)
+    df_add['HMK'] = final_df.loc(axis='columns')[:,'HMK'].max(axis=1)
+    df_add['HLH'] = final_df.loc(axis='columns')[:,'numLastHits'].max(axis=1)
+    df_add['HDeny'] = final_df.loc(axis='columns')[:,'numDenies'].max(axis=1)
+    df_add['HGPM'] = final_df.loc(axis='columns')[:,'goldPerMinute'].max(axis=1)
+    df_add['HXPM'] = final_df.loc(axis='columns')[:,'experiencePerMinute'].max(axis=1)
+    df_add['radiant_score'] = final_df.loc(axis='columns')[['player_'+str(i) for i in range(5)],'kills'].sum(axis=1)
+    df_add['dire_score'] = final_df.loc(axis='columns')[['player_'+str(i) for i in range(5,10)],'kills'].sum(axis=1)
+    df_add['total_kill'] = df_add['radiant_score']+df_add['dire_score']
+    for index in tqdm.tqdm(range(len(final_df))):
+        df_add.loc[index,'HKP'] = final_df.loc[index,HKP[index]]
+        df_add.loc[index,'HKI'] = final_df.loc[index,HKI[index]]
+        df_add.loc[index,'HDP'] = final_df.loc[index,HDP[index]]
+        df_add.loc[index,'HDI'] = final_df.loc[index,HDI[index]]
+        df_add.loc[index,'HKSP'] = final_df.loc[index,HKSP[index]]
+        df_add.loc[index,'HMKP'] = final_df.loc[index,HMKP[index]]
+    return (final_df,df_add)
+
+
+final_df = newest_function()[1]
+# pretty_print(final_df.head())</pre></code>
+                <h2><li>Data Processing</h2><p>Here is where you let your imagination flow. WHAT do you want to see from the data, WHAT do you want to know, WHAT are you curious about. For me I wanted an interesting herald replay and obviously something clickable on the thumbnail. Something like this herald have x amount of kills is extremely clickable, this amount of death is good, weird item build is good, comeback games are good for storytelling, finding smurf (WIP maybe), anything you want can be done with data. You can get tailor made herald replay everytime which just means unlimited content without even playing the game. Again the best practice to manipulate the data and output statistical is never using iteration (Although yes it is one of the easiest and straight to the point solution). But since the other solution is extremely hard to understand (had to ask stackoverflow guy) I decided to just gave up on it, again optimizing processing time is not my goal and not that big of a deal for me.</p></li>
+            </ol>
+        </section>
+        <section class="main-section" id="Finishing_Touches_and_Displaying_Data">
+            <header>Finishing Touches and Displaying Data</header>
+            <ol>
+                <h2><li>Finishing Touches</h2><p>I can definitely combine this cell with the last cell, but my workflow is like this and it is easier to debug the player function. This is where you again finish processing the data with small touches, like changing the type of data, or other miscellaneous.</p></li> 
+            <code><pre>display_df_edit = pd.concat([df_edit, final_df], axis=1)
+display_df_edit = display_df_edit.drop(columns="players")
+# display_df_edit = df_edit.sort_values(by=['start_time','avg_rank_tier','total_kill'],ascending=[False,True,False])
+# display_df_edit = df_edit.sort_values(by=['start_time','total_kill'],ascending=False)
+display_df_edit["avg_rank_tier"] = display_df_edit["avg_rank_tier"].replace(
+    [11, 12, 13, 14, 15, 21, 22, 23, 24, 25],
+    ["header", "H2", "H3", "H4", "H5", "G1", "G2", "G3", "G4", "G5"],
+)
+display_df_edit["kills_per_minute"] = display_df_edit["total_kill"] / display_df_edit["duration_minutes"]
+display_df_edit['kills_per_minute'] = display_df_edit['kills_per_minute'].astype(float).round(2)
+
+# comeback or no
+display_df_edit["kill_dif"] = abs(
+    display_df_edit["radiant_score"] - display_df_edit["dire_score"]
+)
+display_df_edit["comeback"] = False
+display_df_edit.loc[
+    (
+        (display_df_edit["radiant_score"] > display_df_edit["dire_score"])
+        & (display_df_edit["radiant_win"] == False)
+    )
+    | (
+        (display_df_edit["radiant_score"] < display_df_edit["dire_score"])
+        & (display_df_edit["radiant_win"] == True)
+    ),
+    "comeback",
+] = True
+
+# kill dif
+display_df_edit["kill_dif_list"] = False
+display_df_edit["kill_dif_list"] = display_df_edit["kill_dif_list"].astype(object)
+df_edit.loc[df_edit['radiantKills'].isna(),'radiantKills']=np.nan
+df_edit.loc[df_edit['radiantKills'].isna(),'radiantKills']=np.nan
+for idx, rows in display_df_edit.iterrows():
+    try:
+        # absolute kill dif
+        kills = [
+            element1 - element2
+            for (element1, element2) in zip(
+                (rows["radiantKills"]),
+                (rows["direKills"]),
+            )
+        ]
+        kill_dif_list = []
+        abs_kill_dif_list = []
+        for i in range(len(kills)):
+            kill_dif_list.append(sum(kills[0:i]))
+            abs_kill_dif_list.append(abs(sum(kills[0:i])))
+        display_df_edit.at[idx, "kill_dif_list"] = kill_dif_list
+        display_df_edit.loc[idx, "abs_kill_dif"] = max(abs_kill_dif_list)
+        if abs(max(kill_dif_list)) > abs(min(kill_dif_list)):
+            display_df_edit.loc[idx, "max_kill_dif"] = max(kill_dif_list)
+        else:
+            display_df_edit.loc[idx, "max_kill_dif"] = min(kill_dif_list)
+        # gold lead
+        display_df_edit.at[idx, "goldSwing"] = max(
+            (rows["radiantNetworthLeads"])
+        ) - abs(min((rows["radiantNetworthLeads"])))
+        display_df_edit.at[idx, "absGoldSwing"] = abs(
+            max((rows["radiantNetworthLeads"]))
+            - abs(min((rows["radiantNetworthLeads"])))
+        )
+    except:
+        display_df_edit.loc[idx,['max_kill_dif', 'goldSwing', 'absGoldSwing', 'abs_kill_dif']] = np.nan
+
+# get only herald comment if not required
+# display_df_edit = display_df_edit[display_df_edit['avg_rank_tier'].str.find('H') == 0]
+display_df_edit.to_csv(f"herald_replay_{datetime.datetime.today().strftime('%b')}_{datetime.datetime.today().day}.csv", index=False)
+display_df_edit["match_id"].to_clipboard()
+# display
+winsound.Beep(500, 1000)</pre></code>
+                <h2><li>Displaying data</h2><p>Good job making it this far. I commend you for making it this far watching all the spaghetti code that I wrote. Here is where you reap what you sow, the ability to get replays at your will. This part is very simple, just display the columns you want since the other is just used for processing. Use filter and sort_values to get the data you wanted such as which herald replay has a player with the highest kills, or maybe I just want herald rank or maybe guardian rank too (I usually have 9k herald only data and 1k without any filter). Then just pretty_print it since breakline or /n doesn't work well with display.</p></li>
+                <code><pre># display_df_edit = pd.read_csv("herald_replay_sep_20.csv")
+# display_df_edit = display_df_edit[display_df_edit['comeback'] == True]
+column_list = [
+    "match_id",
+    "radiant_win",
+    "start_time",
+    "duration",
+    "avg_rank_tier",
+    "duration_minutes",
+    "radiant_score",
+    "dire_score",
+    "total_kill",
+    "kill_dif",
+    "max_kill_dif",
+    "kills_per_minute",
+    "comeback",
+    "analysisOutcome",
+    "goldSwing",
+    "absGoldSwing",
+    "topLaneOutcome",
+    "midLaneOutcome",
+    "bottomLaneOutcome",
+    "HK",
+    "HKP",
+    "HKI",
+    "HD",
+    "HDP",
+    "HDI",
+    "HLH",
+    "HDeny",
+    "HGPM",
+    "HXPM",
+    "abs_kill_dif",
+    "HKS",
+    "HKSP",
+    "HMK",
+    "HMKP",
+]
+
+condition = display_df_edit["match_id"].notnull()
+condition = (display_df_edit['avg_rank_tier'].str[0]=='H') | (display_df_edit['avg_rank_tier'].str[0]=='G')
+# condition = display_df_edit["analysisOutcome"] == "COMEBACK"
+# condition = display_df_edit["match_id"] == 7314182408
+
+pretty_print(
+    display_df_edit.loc[condition, column_list]
+    .sort_values(by=["HK"], ascending=[False])
+    .head(10)
+)</pre></code>
+            </ol>
+        </section>
+        <section class="main-section" id="Extra_Fun">
+            <header>Extra Fun</header>
+            <p>I put an extra fun section since this is may or may not be necessary for my process of gathering herald replay. With displaying the dataframe step from before I can search any herald replay I wanted, but if you are extra spicy and want a challenge displaying more data than needed.</p>
+            <ol>
+                <h2><li>Displaying the match data</h2><p>Again this section is completely unnecessary since well you can just open dota and look the data from there. But if you are THAT lazy to open dota and use their beautiful replay interface then make your own. I mean by this point you almost have all the data you needed right? Again this example is very bad since I admit that I did this a while back before I understand that iterating over dataframe is a big no no. But you can customize what you wanted to see here, highlight the highest kill and death with color, pivot the data, add additional information, and etc.</p></li>
+                <code><pre>match_id_in = 7248121726 # input your match ID here, This is 153 kills muerta herald replay if you are interested
+display_match = display_df_edit[:]
+display_match = display_match.set_index("match_id")
+# make columns
+col_list = []
+for i in range(10):
+    col_list.append("player_" + str(i))
+    col_list.append("position_" + str(i))
+    col_list.append("lane_" + str(i))
+    col_list.append("KDA_" + str(i))
+    col_list.append("kills_" + str(i))
+    col_list.append("deaths_" + str(i))
+    col_list.append("item_" + str(i))
+    col_list.append("numLastHits_" + str(i))
+    col_list.append("networth_" + str(i))
+    col_list.append("goldPerMinute_" + str(i))
+    col_list.append("experiencePerMinute_" + str(i))
+
+# pivot
+to_pivot = pd.DataFrame(display_match.loc[match_id_in, col_list]).reset_index()
+to_pivot["player_slot"] = to_pivot["index"].str[-1]
+to_pivot["category"] = to_pivot["index"].str[:-2]
+match_df = to_pivot.pivot(
+    index="category", columns="player_slot", values=match_id_in
+).sort_index(ascending=False)
+
+# function definition
+
+
+def highlight_cols_green(color):
+    return "background-color: % s" % "darkgreen"
+
+
+def highlight_cols_red(color):
+    return "background-color: % s" % "darkred"
+
+
+# highlighting the cells
+HK = match_df.loc["kills"].astype(float).idxmax()
+HD = match_df.loc["deaths"].astype(float).idxmax()
+match_df.drop(["kills", "deaths"])
+match_df = match_df.style.applymap(highlight_cols_green, subset=pd.IndexSlice[:, [HK]])
+match_df = match_df.applymap(highlight_cols_red, subset=pd.IndexSlice[:, [HD]])
+pretty_print(match_df)
+
+# additional Info
+list_col_get = [
+    "radiant_win",
+    "radiant_score",
+    "dire_score",
+    "total_kill",
+    "kill_dif",
+    "max_kill_dif",
+    "comeback",
+    "analysisOutcome",
+    "duration",
+    "duration_minutes",
+    "avg_rank_tier",
+    "absGoldSwing",
+]
+pretty_print(display_match.loc[[match_id_in], list_col_get])</pre></code>
+                <h2><li>Displaying kill, exp, and gold chart</h2><p>Super completely unnecessary. But as a data analyst you have to be able to make chart right? So yeah just use plotly since by far I think it is the easiest to make beautiful charts by using just properties and built in function. In my opinion maybe the hardest part is preparing (preprocessing again) the data so that it can be inputted to the plotly function. Oh and the fun part is that you can make additional line for analysis purposes.</p></li>
+                <code><pre>line_chart = pd.DataFrame()
+
+# kill difference timeline
+line_chart["kill_dif_min"] = display_df_edit.set_index("match_id").loc[
+    match_id_in, "kill_dif_list"
+]
+line_chart["kill_dif_min"] = line_chart["kill_dif_min"].apply(abs)
+# make radiant kills and dire kills timeline
+radiant_kills = []
+dire_kills = []
+for i in range(len(line_chart["kill_dif_min"])):
+    radiant_kills.append(
+        sum(
+            eval(
+                display_df_edit.set_index("match_id").loc[match_id_in, "radiantKills"]
+            )[0:i]
+        )
+    )
+    dire_kills.append(
+        sum(
+            eval(display_df_edit.set_index("match_id").loc[match_id_in, "direKills"])[
+                0:i
+            ]
+        )
+    )
+
+
+line_chart["radiant_kills_min"] = radiant_kills
+line_chart["dire_kills_min"] = dire_kills
+line_chart["goldLead"] = eval(
+    display_df_edit.set_index("match_id").loc[match_id_in, "radiantNetworthLeads"]
+)
+line_chart["EXPLead"] = eval(
+    display_df_edit.set_index("match_id").loc[match_id_in, "radiantExperienceLeads"]
+)
+winrate = eval(display_df_edit.set_index("match_id").loc[match_id_in, "winRates"])
+line_chart["winrate"] = np.append(
+    np.array(winrate), [0] * (len(line_chart) - len(winrate))
+)
+line_chart["min"] = [i for i in range(-1, len(line_chart) - 1)]
+
+# create line chart
+fig = px.line(
+    line_chart,
+    x="min",
+    y=["kill_dif_min", "dire_kills_min", "radiant_kills_min"],
+    height=650,
+    template="plotly_dark",
+)
+fig.update_traces(patch={"line_shape": "spline"})
+fig.update_layout(
+    xaxis=dict(tickmode="linear", tick0=0, dtick=5),
+    yaxis=dict(tickmode="linear", tick0=0, dtick=10),
+)
+
+# create line chart networth, exp, winrate dif
+figure = go.Figure()
+figure.add_trace(
+    go.Scatter(
+        x=line_chart["min"], y=line_chart["goldLead"], name="Gold Lead", yaxis="y1"
+    )
+)
+figure.add_trace(
+    go.Scatter(
+        x=line_chart["min"], y=line_chart["EXPLead"], name="Exp Lead", yaxis="y2"
+    )
+)
+# Create axis objects
+figure.update_layout(
+    yaxis=dict(
+        title="Gold Lead",
+    ),
+    yaxis2=dict(title="Exp Lead", overlaying="y", side="right", tickmode="sync"),
+    height=650,
+    template="plotly_dark",
+)
+
+all_min = line_chart[["goldLead", "EXPLead"]].min().min()
+all_max = line_chart[["goldLead", "EXPLead"]].max().max()
+figure.update_layout(
+    yaxis=dict(range=[all_min, all_max]),
+    yaxis2=dict(range=[all_min, all_max]),
+    xaxis=dict(tickmode="linear", tick0=0, dtick=5),
+)
+fig.show()
+figure.show()</pre></code>
+            </ol>
+        </section>
+        <section class="main-section" id="Gratitude_From_the_Author">
+            <header>Gratitude From the Author</header>
+            <p>Thanks again for making it this far. Honestly this little technical documentation is a part of a project from a course on freecodecamp that I needed to finish. But for me this is a part of a website that I eventually want to make for my own documentation and personal use. I wanted to get better and learn everything I can learn while I am still young to prepare myself better for the future. Conquer all the tech since in the future there is nothing more valuable than knowledge itself, for me it is getting more addicting than dota to learn and consume everything. Right now I semi-finished data analyst and data science (there is no such thing as mastery I believe, no human are capable of omniscience) and now I am learning to create websites. I think next up software development, game coding, and A.I are what I have in mind for what I wanted to learn next but if you have any suggestion as to what tech would be the future then I am open to any suggestion.</p>
+        </section>
+        </main>
+    </div>
+    <script src="./scripts.js"></script>
+  </body>
+</html>
+
